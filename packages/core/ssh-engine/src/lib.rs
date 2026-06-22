@@ -1,14 +1,14 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::net::SocketAddr;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use russh::client::{self, Handler, Msg, Session};
 use russh::keys::load_secret_key;
 use russh::Channel;
+use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::sync::Mutex;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // ─── Error Types ───────────────────────────────────────────────────────────────
@@ -53,9 +53,17 @@ pub struct SshAuthConfig {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum AuthMethod {
-    Password { password: String },
-    Key { private_key_path: String, passphrase: Option<String> },
-    KeyInline { private_key: String, passphrase: Option<String> },
+    Password {
+        password: String,
+    },
+    Key {
+        private_key_path: String,
+        passphrase: Option<String>,
+    },
+    KeyInline {
+        private_key: String,
+        passphrase: Option<String>,
+    },
     Agent,
     None,
 }
@@ -101,10 +109,14 @@ impl SshSessionHandle {
         let mut session = self.session.lock().await;
         let session = session.as_mut().ok_or(SshError::Disconnected)?;
 
-        let mut channel = session.channel_open_session().await
+        let mut channel = session
+            .channel_open_session()
+            .await
             .map_err(|e| SshError::ChannelError(e.to_string()))?;
 
-        channel.exec(true, command.as_bytes()).await
+        channel
+            .exec(true, command.as_bytes())
+            .await
             .map_err(|e| SshError::CommandFailed(e.to_string()))?;
 
         let mut stdout = Vec::new();
@@ -150,13 +162,19 @@ impl SshSessionHandle {
         let mut session = self.session.lock().await;
         let session = session.as_mut().ok_or(SshError::Disconnected)?;
 
-        let mut channel = session.channel_open_session().await
+        let mut channel = session
+            .channel_open_session()
+            .await
             .map_err(|e| SshError::ChannelError(e.to_string()))?;
 
-        channel.request_pty(false, &[]).await
+        channel
+            .request_pty(false, &[])
+            .await
             .map_err(|e| SshError::ChannelError(e.to_string()))?;
 
-        channel.shell(true).await
+        channel
+            .shell(true)
+            .await
             .map_err(|e| SshError::ChannelError(e.to_string()))?;
 
         let (tx, rx) = mpsc::unbounded_channel();
@@ -191,19 +209,26 @@ pub struct ShellHandle {
 impl ShellHandle {
     pub async fn write_input(&self, data: &[u8]) -> Result<(), SshError> {
         let mut channel = self.channel.lock().await;
-        channel.data(data).await
+        channel
+            .data(data)
+            .await
             .map_err(|e| SshError::ChannelError(e.to_string()))
     }
 
     pub async fn resize_pty(&self, cols: u32, rows: u32) -> Result<(), SshError> {
         let mut channel = self.channel.lock().await;
-        channel.window_change(cols, rows, 0, 0).await
+        channel
+            .window_change(cols, rows, 0, 0)
+            .await
             .map_err(|e| SshError::ChannelError(e.to_string()))
     }
 
     pub async fn close(&self) -> Result<(), SshError> {
         let mut channel = self.channel.lock().await;
-        channel.eof().await.map_err(|e| SshError::ChannelError(e.to_string()))
+        channel
+            .eof()
+            .await
+            .map_err(|e| SshError::ChannelError(e.to_string()))
     }
 }
 
@@ -275,7 +300,10 @@ impl SshManager {
     }
 
     pub async fn connect(&self, config: SshConnectionConfig) -> Result<SshSessionHandle, SshError> {
-        info!("Connecting to {}:{} as {}", config.host, config.port, config.auth.username);
+        info!(
+            "Connecting to {}:{} as {}",
+            config.host, config.port, config.auth.username
+        );
 
         // Build proxy jump chain if configured
         let connect_config = if let Some(ref proxy) = config.proxy_jump {
@@ -295,21 +323,34 @@ impl SshManager {
         // Authenticate and connect
         let mut session = match &config.auth.method {
             AuthMethod::Password { password } => {
-                let mut handle = client::connect(connect_config, (config.host.clone(), config.port), handler).await
-                    .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
-                let auth_result = handle.authenticate_password(&config.auth.username, password).await
+                let mut handle =
+                    client::connect(connect_config, (config.host.clone(), config.port), handler)
+                        .await
+                        .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
+                let auth_result = handle
+                    .authenticate_password(&config.auth.username, password)
+                    .await
                     .map_err(|e| SshError::AuthFailed(e.to_string()))?;
                 if !auth_result {
-                    return Err(SshError::AuthFailed("Password authentication rejected".into()));
+                    return Err(SshError::AuthFailed(
+                        "Password authentication rejected".into(),
+                    ));
                 }
                 handle
             }
-            AuthMethod::Key { private_key_path, passphrase } => {
+            AuthMethod::Key {
+                private_key_path,
+                passphrase,
+            } => {
                 let key_pair = load_secret_key(private_key_path, passphrase.as_deref())
                     .map_err(|e| SshError::KeyLoadError(e.to_string()))?;
-                let mut handle = client::connect(connect_config, (config.host.clone(), config.port), handler).await
-                    .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
-                let auth_result = handle.authenticate_publickey(&config.auth.username, Arc::new(key_pair)).await
+                let mut handle =
+                    client::connect(connect_config, (config.host.clone(), config.port), handler)
+                        .await
+                        .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
+                let auth_result = handle
+                    .authenticate_publickey(&config.auth.username, Arc::new(key_pair))
+                    .await
                     .map_err(|e| SshError::AuthFailed(e.to_string()))?;
                 if !auth_result {
                     return Err(SshError::AuthFailed("Key authentication rejected".into()));
@@ -317,9 +358,13 @@ impl SshManager {
                 handle
             }
             AuthMethod::Agent => {
-                let mut handle = client::connect(connect_config, (config.host.clone(), config.port), handler).await
-                    .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
-                let auth_result = handle.authenticate_agent(&config.auth.username).await
+                let mut handle =
+                    client::connect(connect_config, (config.host.clone(), config.port), handler)
+                        .await
+                        .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
+                let auth_result = handle
+                    .authenticate_agent(&config.auth.username)
+                    .await
                     .map_err(|e| SshError::AuthFailed(e.to_string()))?;
                 if !auth_result {
                     return Err(SshError::AuthFailed("Agent authentication rejected".into()));
@@ -327,15 +372,20 @@ impl SshManager {
                 handle
             }
             AuthMethod::None => {
-                let handle = client::connect(connect_config, (config.host.clone(), config.port), handler).await
-                    .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
+                let handle =
+                    client::connect(connect_config, (config.host.clone(), config.port), handler)
+                        .await
+                        .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
                 handle
             }
             _ => return Err(SshError::AuthFailed("Unsupported auth method".into())),
         };
 
         connected.store(true, Ordering::Relaxed);
-        info!("Connected to {}:{} (id={})", config.host, config.port, config.id);
+        info!(
+            "Connected to {}:{} (id={})",
+            config.host, config.port, config.id
+        );
 
         let handle = SshSessionHandle {
             id: config.id,
@@ -379,22 +429,33 @@ impl SshManager {
         self.sessions.iter().map(|s| s.value().clone()).collect()
     }
 
-    fn build_direct_config(&self, config: &SshConnectionConfig) -> Result<client::Config, SshError> {
+    fn build_direct_config(
+        &self,
+        config: &SshConnectionConfig,
+    ) -> Result<client::Config, SshError> {
         Ok(client::Config {
             preferred: client::Preferred::default(),
             buffer_alloc_size: Some(32768),
-            keepalive_interval: Some(std::time::Duration::from_secs(config.keepalive_interval_secs)),
+            keepalive_interval: Some(std::time::Duration::from_secs(
+                config.keepalive_interval_secs,
+            )),
             keepalive_max: Some(3),
             ..Default::default()
         })
     }
 
-    fn build_proxy_config(&self, config: &SshConnectionConfig, proxy: &ProxyJumpConfig) -> Result<client::Config, SshError> {
+    fn build_proxy_config(
+        &self,
+        config: &SshConnectionConfig,
+        proxy: &ProxyJumpConfig,
+    ) -> Result<client::Config, SshError> {
         info!("Using ProxyJump via {}:{}", proxy.host, proxy.port);
         Ok(client::Config {
             preferred: client::Preferred::default(),
             buffer_alloc_size: Some(32768),
-            keepalive_interval: Some(std::time::Duration::from_secs(config.keepalive_interval_secs)),
+            keepalive_interval: Some(std::time::Duration::from_secs(
+                config.keepalive_interval_secs,
+            )),
             keepalive_max: Some(3),
             // ProxyJump handled at connect layer via SOCKS or direct TCP forwarding
             ..Default::default()

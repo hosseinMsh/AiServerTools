@@ -16,9 +16,6 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 tauri = { version = "1", features = ["shell-open"] }
-tauri-plugin-shell = "1"
-tauri-plugin-dialog = "1"
-tauri-plugin-fs = "1"
 
 ssh-engine = { path = "../../../packages/core/ssh-engine" }
 docker-engine = { path = "../../../packages/core/docker-engine" }

@@ -43,7 +43,10 @@ async fn ssh_connect(
     state: tauri::State<'_, AppState>,
     config: ssh_engine::SshConnectionConfig,
 ) -> Result<ssh_engine::SshSessionHandle, String> {
-    info!("SSH connect: {}@{}:{}", config.auth.username, config.host, config.port);
+    info!(
+        "SSH connect: {}@{}:{}",
+        config.auth.username, config.host, config.port
+    );
     state.ssh.connect(config).await.map_err(|e| e.to_string())
 }
 
@@ -55,7 +58,10 @@ async fn ssh_exec(
 ) -> Result<ssh_engine::CommandResult, String> {
     let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     let session = state.ssh.get_session(&id).ok_or("Session not found")?;
-    let result = session.execute_command(&command).await.map_err(|e| e.to_string())?;
+    let result = session
+        .execute_command(&command)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Audit log
     state.audit.log(audit::AuditEvent {
@@ -68,7 +74,11 @@ async fn ssh_exec(
         action: "ssh_exec".into(),
         resource: command.clone(),
         details: serde_json::json!({"command": command, "exit_code": result.exit_code}),
-        result: if result.exit_code == Some(0) { audit::AuditResult::Success } else { audit::AuditResult::Failure("Non-zero exit".into()) },
+        result: if result.exit_code == Some(0) {
+            audit::AuditResult::Success
+        } else {
+            audit::AuditResult::Failure("Non-zero exit".into())
+        },
         ip_address: None,
         user_agent: None,
     });
@@ -109,9 +119,18 @@ async fn docker_container_action(
 ) -> Result<(), String> {
     let client = docker_engine::DockerClient::new(config).map_err(|e| e.to_string())?;
     match action.as_str() {
-        "start" => client.start_container(&container_id).await.map_err(|e| e.to_string()),
-        "stop" => client.stop_container(&container_id, None).await.map_err(|e| e.to_string()),
-        "restart" => client.restart_container(&container_id, None).await.map_err(|e| e.to_string()),
+        "start" => client
+            .start_container(&container_id)
+            .await
+            .map_err(|e| e.to_string()),
+        "stop" => client
+            .stop_container(&container_id, None)
+            .await
+            .map_err(|e| e.to_string()),
+        "restart" => client
+            .restart_container(&container_id, None)
+            .await
+            .map_err(|e| e.to_string()),
         _ => Err(format!("Unknown action: {}", action)),
     }
 }
@@ -132,7 +151,10 @@ async fn docker_container_logs(
         since: None,
         until: None,
     };
-    client.container_logs(&container_id, opts).await.map_err(|e| e.to_string())
+    client
+        .container_logs(&container_id, opts)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -141,7 +163,10 @@ async fn docker_container_stats(
     container_id: String,
 ) -> Result<docker_engine::ContainerStats, String> {
     let client = docker_engine::DockerClient::new(config).map_err(|e| e.to_string())?;
-    client.container_stats(&container_id).await.map_err(|e| e.to_string())
+    client
+        .container_stats(&container_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ── Tunnel Commands ───────────────────────────────────────────────────────
@@ -164,7 +189,11 @@ async fn tunnel_start_socks(
         target_port: None,
         enabled: true,
     };
-    let instance = state.tunnel.start_tunnel(config).await.map_err(|e| e.to_string())?;
+    let instance = state
+        .tunnel
+        .start_tunnel(config)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(instance.status())
 }
 
@@ -187,17 +216,22 @@ async fn tunnel_start_local(
         target_port: Some(target_port),
         enabled: true,
     };
-    let instance = state.tunnel.start_tunnel(config).await.map_err(|e| e.to_string())?;
+    let instance = state
+        .tunnel
+        .start_tunnel(config)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(instance.status())
 }
 
 #[tauri::command]
-async fn tunnel_stop(
-    state: tauri::State<'_, AppState>,
-    tunnel_id: String,
-) -> Result<(), String> {
+async fn tunnel_stop(state: tauri::State<'_, AppState>, tunnel_id: String) -> Result<(), String> {
     let id = Uuid::parse_str(&tunnel_id).map_err(|e| e.to_string())?;
-    state.tunnel.stop_tunnel(&id).await.map_err(|e| e.to_string())
+    state
+        .tunnel
+        .stop_tunnel(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -212,7 +246,10 @@ async fn vault_unlock(
     state: tauri::State<'_, AppState>,
     master_password: String,
 ) -> Result<(), String> {
-    state.security.unlock(&master_password).map_err(|e| e.to_string())
+    state
+        .security
+        .unlock(&master_password)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -229,7 +266,10 @@ async fn vault_store(
         "token" => security::CredentialKind::Token,
         _ => security::CredentialKind::Other(kind),
     };
-    let entry = state.security.vault.store(&label, cred_kind, &value, vec![])
+    let entry = state
+        .security
+        .vault
+        .store(&label, cred_kind, &value, vec![])
         .map_err(|e| e.to_string())?;
     Ok(entry.id.to_string())
 }
@@ -240,7 +280,11 @@ async fn vault_retrieve(
     entry_id: String,
 ) -> Result<String, String> {
     let id = Uuid::parse_str(&entry_id).map_err(|e| e.to_string())?;
-    state.security.vault.retrieve(&id).map_err(|e| e.to_string())
+    state
+        .security
+        .vault
+        .retrieve(&id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -310,7 +354,9 @@ async fn context_register_server(
 }
 
 #[tauri::command]
-async fn context_list_servers(state: tauri::State<'_, AppState>) -> Vec<context_engine::ServerState> {
+async fn context_list_servers(
+    state: tauri::State<'_, AppState>,
+) -> Vec<context_engine::ServerState> {
     state.context.list_servers()
 }
 
@@ -327,16 +373,15 @@ async fn context_get_server(
 
 fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()
-            .add_directive(tracing::Level::INFO.into()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
         .init();
 
     info!("Starting InfraCore Desktop v{}", env!("CARGO_PKG_VERSION"));
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             // SSH

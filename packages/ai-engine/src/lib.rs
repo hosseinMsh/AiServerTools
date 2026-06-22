@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{info, warn, debug, error};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // ─── Error Types ───────────────────────────────────────────────────────────────
@@ -222,10 +222,16 @@ impl AiProvider {
     }
 
     pub async fn fetch_models(&self) -> Result<Vec<ModelInfo>, AiError> {
-        let url = format!("{}{}", self.config.api_base_url.trim_end_matches('/'), self.config.models_endpoint);
+        let url = format!(
+            "{}{}",
+            self.config.api_base_url.trim_end_matches('/'),
+            self.config.models_endpoint
+        );
         debug!("Fetching models from: {}", url);
 
-        let resp = self.http.get(&url)
+        let resp = self
+            .http
+            .get(&url)
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .send()
             .await
@@ -238,7 +244,9 @@ impl AiProvider {
             });
         }
 
-        let body: serde_json::Value = resp.json().await
+        let body: serde_json::Value = resp
+            .json()
+            .await
             .map_err(|e| AiError::ApiRequestFailed(e.to_string()))?;
 
         let models = match self.config.provider_type {
@@ -246,33 +254,50 @@ impl AiProvider {
                 let data = body["data"].as_array().ok_or_else(|| {
                     AiError::ApiRequestFailed("Expected 'data' array in response".into())
                 })?;
-                data.iter().map(|m| ModelInfo {
-                    id: m["id"].as_str().unwrap_or("").to_string(),
-                    name: m["id"].as_str().unwrap_or("").to_string(),
-                    provider: self.config.name.clone(),
-                    context_length: m["context_length"].as_u64().unwrap_or(4096) as u32,
-                    capabilities: vec![ModelCapability::Chat, ModelCapability::ToolUse],
-                }).collect()
-            }
-            ProviderType::OpenAiCompatible | ProviderType::Custom => {
-                // Try OpenAI format first, then flat array
-                if let Some(data) = body["data"].as_array() {
-                    data.iter().map(|m| ModelInfo {
+                data.iter()
+                    .map(|m| ModelInfo {
                         id: m["id"].as_str().unwrap_or("").to_string(),
                         name: m["id"].as_str().unwrap_or("").to_string(),
                         provider: self.config.name.clone(),
                         context_length: m["context_length"].as_u64().unwrap_or(4096) as u32,
                         capabilities: vec![ModelCapability::Chat, ModelCapability::ToolUse],
-                    }).collect()
+                    })
+                    .collect()
+            }
+            ProviderType::OpenAiCompatible | ProviderType::Custom => {
+                // Try OpenAI format first, then flat array
+                if let Some(data) = body["data"].as_array() {
+                    data.iter()
+                        .map(|m| ModelInfo {
+                            id: m["id"].as_str().unwrap_or("").to_string(),
+                            name: m["id"].as_str().unwrap_or("").to_string(),
+                            provider: self.config.name.clone(),
+                            context_length: m["context_length"].as_u64().unwrap_or(4096) as u32,
+                            capabilities: vec![ModelCapability::Chat, ModelCapability::ToolUse],
+                        })
+                        .collect()
                 } else if let Some(data) = body.as_array() {
-                    data.iter().map(|m| ModelInfo {
-                        id: m["id"].as_str().or_else(|| m["name"].as_str()).unwrap_or("").to_string(),
-                        name: m["id"].as_str().or_else(|| m["name"].as_str()).unwrap_or("").to_string(),
-                        provider: self.config.name.clone(),
-                        context_length: m.get("context_length").or_else(|| m.get("max_tokens"))
-                            .and_then(|v| v.as_u64()).unwrap_or(4096) as u32,
-                        capabilities: vec![ModelCapability::Chat, ModelCapability::ToolUse],
-                    }).collect()
+                    data.iter()
+                        .map(|m| ModelInfo {
+                            id: m["id"]
+                                .as_str()
+                                .or_else(|| m["name"].as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            name: m["id"]
+                                .as_str()
+                                .or_else(|| m["name"].as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            provider: self.config.name.clone(),
+                            context_length: m
+                                .get("context_length")
+                                .or_else(|| m.get("max_tokens"))
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(4096) as u32,
+                            capabilities: vec![ModelCapability::Chat, ModelCapability::ToolUse],
+                        })
+                        .collect()
                 } else {
                     vec![ModelInfo {
                         id: self.config.default_model.clone(),
@@ -291,8 +316,14 @@ impl AiProvider {
     }
 
     pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, AiError> {
-        let url = format!("{}/chat/completions", self.config.api_base_url.trim_end_matches('/'));
-        debug!("Sending chat request to: {} (model: {})", url, request.model);
+        let url = format!(
+            "{}/chat/completions",
+            self.config.api_base_url.trim_end_matches('/')
+        );
+        debug!(
+            "Sending chat request to: {} (model: {})",
+            url, request.model
+        );
 
         let mut body = serde_json::json!({
             "model": request.model,
@@ -313,7 +344,9 @@ impl AiProvider {
             body["tool_choice"] = tool_choice.clone();
         }
 
-        let resp = self.http.post(&url)
+        let resp = self
+            .http
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .header("Content-Type", "application/json")
             .json(&body)
@@ -327,10 +360,15 @@ impl AiProvider {
             if status == 429 {
                 return Err(AiError::RateLimited);
             }
-            return Err(AiError::ApiError { status, message: text });
+            return Err(AiError::ApiError {
+                status,
+                message: text,
+            });
         }
 
-        resp.json().await.map_err(|e| AiError::ApiRequestFailed(e.to_string()))
+        resp.json()
+            .await
+            .map_err(|e| AiError::ApiRequestFailed(e.to_string()))
     }
 
     pub fn get_models(&self) -> Vec<ModelInfo> {
@@ -350,7 +388,9 @@ pub struct AiToolRegistry {
 
 impl AiToolRegistry {
     pub fn new() -> Self {
-        let mut registry = Self { tools: RwLock::new(Vec::new()) };
+        let mut registry = Self {
+            tools: RwLock::new(Vec::new()),
+        };
         registry.register_default_tools();
         registry
     }
@@ -480,7 +520,9 @@ impl IntentClassifier {
     pub fn classify(input: &str) -> UserIntent {
         let lower = input.to_lowercase();
 
-        if lower.contains("ssh") && (lower.contains("connect") || lower.contains("login") || lower.contains("access")) {
+        if lower.contains("ssh")
+            && (lower.contains("connect") || lower.contains("login") || lower.contains("access"))
+        {
             return UserIntent::SshConnect;
         }
         if lower.contains("docker") {
@@ -492,19 +534,36 @@ impl IntentClassifier {
             }
             return UserIntent::DockerExec;
         }
-        if lower.contains("file") || lower.contains("upload") || lower.contains("download") || lower.contains("sftp") {
+        if lower.contains("file")
+            || lower.contains("upload")
+            || lower.contains("download")
+            || lower.contains("sftp")
+        {
             return UserIntent::SftpBrowse;
         }
-        if lower.contains("tunnel") || lower.contains("proxy") || lower.contains("forward") || lower.contains("socks") {
+        if lower.contains("tunnel")
+            || lower.contains("proxy")
+            || lower.contains("forward")
+            || lower.contains("socks")
+        {
             return UserIntent::TunnelCreate;
         }
-        if lower.contains("diagnos") || lower.contains("debug") || lower.contains("error") || lower.contains("fail") {
+        if lower.contains("diagnos")
+            || lower.contains("debug")
+            || lower.contains("error")
+            || lower.contains("fail")
+        {
             return UserIntent::SystemDiagnostics;
         }
         if lower.contains("edit") || lower.contains("change") || lower.contains("modify") {
             return UserIntent::FileEdit;
         }
-        if lower.contains("cpu") || lower.contains("memory") || lower.contains("disk") || lower.contains("monitor") || lower.contains("metric") {
+        if lower.contains("cpu")
+            || lower.contains("memory")
+            || lower.contains("disk")
+            || lower.contains("monitor")
+            || lower.contains("metric")
+        {
             return UserIntent::ServerMonitor;
         }
         if lower.contains("script") || lower.contains("automate") || lower.contains("deploy") {
@@ -568,11 +627,15 @@ impl AiEngine {
     }
 
     pub fn list_providers(&self) -> Vec<AiProviderConfig> {
-        self.providers.iter().map(|e| e.value().config.clone()).collect()
+        self.providers
+            .iter()
+            .map(|e| e.value().config.clone())
+            .collect()
     }
 
     pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, AiError> {
-        let provider = self.get_active_provider()
+        let provider = self
+            .get_active_provider()
             .ok_or_else(|| AiError::ProviderNotFound("No active provider".into()))?;
 
         // TODO: Add model fallback, retry logic, context trimming
@@ -580,7 +643,9 @@ impl AiEngine {
     }
 
     pub async fn fetch_models(&self, provider_id: &Uuid) -> Result<Vec<ModelInfo>, AiError> {
-        let provider = self.providers.get(provider_id)
+        let provider = self
+            .providers
+            .get(provider_id)
             .ok_or_else(|| AiError::ProviderNotFound(provider_id.to_string()))?;
         provider.fetch_models().await
     }
@@ -633,13 +698,34 @@ mod tests {
 
     #[test]
     fn test_intent_classifier() {
-        assert_eq!(IntentClassifier::classify("SSH into prod-web-01"), UserIntent::SshConnect);
-        assert_eq!(IntentClassifier::classify("Show me docker containers"), UserIntent::DockerExec);
-        assert_eq!(IntentClassifier::classify("Run docker-compose up -d"), UserIntent::DockerCompose);
-        assert_eq!(IntentClassifier::classify("Upload file to /etc/nginx"), UserIntent::SftpBrowse);
-        assert_eq!(IntentClassifier::classify("Create SOCKS tunnel on 1080"), UserIntent::TunnelCreate);
-        assert_eq!(IntentClassifier::classify("Debug why nginx is failing"), UserIntent::SystemDiagnostics);
-        assert_eq!(IntentClassifier::classify("Check CPU and memory usage"), UserIntent::ServerMonitor);
+        assert_eq!(
+            IntentClassifier::classify("SSH into prod-web-01"),
+            UserIntent::SshConnect
+        );
+        assert_eq!(
+            IntentClassifier::classify("Show me docker containers"),
+            UserIntent::DockerExec
+        );
+        assert_eq!(
+            IntentClassifier::classify("Run docker-compose up -d"),
+            UserIntent::DockerCompose
+        );
+        assert_eq!(
+            IntentClassifier::classify("Upload file to /etc/nginx"),
+            UserIntent::SftpBrowse
+        );
+        assert_eq!(
+            IntentClassifier::classify("Create SOCKS tunnel on 1080"),
+            UserIntent::TunnelCreate
+        );
+        assert_eq!(
+            IntentClassifier::classify("Debug why nginx is failing"),
+            UserIntent::SystemDiagnostics
+        );
+        assert_eq!(
+            IntentClassifier::classify("Check CPU and memory usage"),
+            UserIntent::ServerMonitor
+        );
     }
 
     #[test]
@@ -695,7 +781,9 @@ mod tests {
         let tools = registry.get_tools();
         assert!(tools.len() >= 5);
         assert!(tools.iter().any(|t| t.function.name == "ssh_exec"));
-        assert!(tools.iter().any(|t| t.function.name == "docker_list_containers"));
+        assert!(tools
+            .iter()
+            .any(|t| t.function.name == "docker_list_containers"));
     }
 
     #[test]

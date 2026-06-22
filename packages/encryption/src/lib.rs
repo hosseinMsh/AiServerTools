@@ -44,8 +44,8 @@ pub fn generate_salt() -> [u8; 16] {
 // ─── Symmetric Encryption (AES-256-GCM) ────────────────────────────────────────
 
 pub fn encrypt(plaintext: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|e| CryptoError::EncryptFailed(e.to_string()))?;
+    let cipher =
+        Aes256Gcm::new_from_slice(key).map_err(|e| CryptoError::EncryptFailed(e.to_string()))?;
 
     let mut nonce_bytes = [0u8; 12];
     OsRng.fill_bytes(&mut nonce_bytes);
@@ -65,19 +65,24 @@ pub fn encrypt(plaintext: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> 
 pub fn decrypt(encrypted: &str, key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
     let parts: Vec<&str> = encrypted.splitn(2, '.').collect();
     if parts.len() != 2 {
-        return Err(CryptoError::InvalidFormat("Expected nonce.ciphertext".into()));
+        return Err(CryptoError::InvalidFormat(
+            "Expected nonce.ciphertext".into(),
+        ));
     }
 
-    let nonce_bytes = BASE64.decode(parts[0])
+    let nonce_bytes = BASE64
+        .decode(parts[0])
         .map_err(|e| CryptoError::DecryptFailed(e.to_string()))?;
-    let ciphertext = BASE64.decode(parts[1])
+    let ciphertext = BASE64
+        .decode(parts[1])
         .map_err(|e| CryptoError::DecryptFailed(e.to_string()))?;
 
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|e| CryptoError::DecryptFailed(e.to_string()))?;
+    let cipher =
+        Aes256Gcm::new_from_slice(key).map_err(|e| CryptoError::DecryptFailed(e.to_string()))?;
 
     let nonce = Nonce::from_slice(&nonce_bytes);
-    cipher.decrypt(nonce, ciphertext.as_ref())
+    cipher
+        .decrypt(nonce, ciphertext.as_ref())
         .map_err(|e| CryptoError::DecryptFailed(e.to_string()))
 }
 
@@ -97,7 +102,8 @@ pub fn hash_password(password: &str) -> Result<String, CryptoError> {
 }
 
 pub fn verify_password(password: &str, stored: &str) -> Result<bool, CryptoError> {
-    let data = BASE64.decode(stored)
+    let data = BASE64
+        .decode(stored)
         .map_err(|e| CryptoError::InvalidFormat(e.to_string()))?;
 
     if data.len() != 48 {

@@ -9,7 +9,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 // ─── Error Types ───────────────────────────────────────────────────────────────
@@ -49,7 +49,9 @@ pub struct EncryptionEngine {
 
 impl EncryptionEngine {
     pub fn new() -> Self {
-        Self { master_key: RwLock::new(None) }
+        Self {
+            master_key: RwLock::new(None),
+        }
     }
 
     pub fn initialize(&self, key_material: &[u8]) -> Result<(), SecurityError> {
@@ -70,8 +72,7 @@ impl EncryptionEngine {
     }
 
     pub fn encrypt(&self, plaintext: &[u8], aad: &[u8]) -> Result<String, SecurityError> {
-        let key = self.master_key.read()
-            .ok_or(SecurityError::VaultLocked)?;
+        let key = self.master_key.read().ok_or(SecurityError::VaultLocked)?;
 
         let cipher = Aes256Gcm::new_from_slice(&key)
             .map_err(|e| SecurityError::EncryptionFailed(e.to_string()))?;
@@ -94,24 +95,28 @@ impl EncryptionEngine {
     }
 
     pub fn decrypt(&self, encrypted: &str, aad: &[u8]) -> Result<Vec<u8>, SecurityError> {
-        let key = self.master_key.read()
-            .ok_or(SecurityError::VaultLocked)?;
+        let key = self.master_key.read().ok_or(SecurityError::VaultLocked)?;
 
         let parts: Vec<&str> = encrypted.splitn(2, '.').collect();
         if parts.len() != 2 {
-            return Err(SecurityError::DecryptionFailed("Invalid encrypted format".into()));
+            return Err(SecurityError::DecryptionFailed(
+                "Invalid encrypted format".into(),
+            ));
         }
 
-        let nonce_bytes = BASE64.decode(parts[0])
+        let nonce_bytes = BASE64
+            .decode(parts[0])
             .map_err(|e| SecurityError::DecryptionFailed(e.to_string()))?;
-        let ciphertext = BASE64.decode(parts[1])
+        let ciphertext = BASE64
+            .decode(parts[1])
             .map_err(|e| SecurityError::DecryptionFailed(e.to_string()))?;
 
         let nonce = Nonce::from_slice(&nonce_bytes);
         let cipher = Aes256Gcm::new_from_slice(&key)
             .map_err(|e| SecurityError::DecryptionFailed(e.to_string()))?;
 
-        cipher.decrypt(nonce, ciphertext.as_ref())
+        cipher
+            .decrypt(nonce, ciphertext.as_ref())
             .map_err(|e| SecurityError::DecryptionFailed(e.to_string()))
     }
 
@@ -135,7 +140,8 @@ impl EncryptionEngine {
     }
 
     pub fn verify_password(password: &str, stored: &str) -> Result<bool, SecurityError> {
-        let data = BASE64.decode(stored)
+        let data = BASE64
+            .decode(stored)
             .map_err(|e| SecurityError::InvalidInput(e.to_string()))?;
 
         if data.len() != 48 {
@@ -195,12 +201,20 @@ impl CredentialVault {
         }
     }
 
-    pub fn store(&self, label: &str, kind: CredentialKind, plaintext: &str, tags: Vec<String>) -> Result<VaultEntry, SecurityError> {
+    pub fn store(
+        &self,
+        label: &str,
+        kind: CredentialKind,
+        plaintext: &str,
+        tags: Vec<String>,
+    ) -> Result<VaultEntry, SecurityError> {
         if !self.encryption.is_initialized() {
             return Err(SecurityError::VaultLocked);
         }
 
-        let encrypted = self.encryption.encrypt(plaintext.as_bytes(), label.as_bytes())?;
+        let encrypted = self
+            .encryption
+            .encrypt(plaintext.as_bytes(), label.as_bytes())?;
         let now = chrono::Utc::now().to_rfc3339();
 
         let entry = VaultEntry {
@@ -219,12 +233,16 @@ impl CredentialVault {
     }
 
     pub fn retrieve(&self, id: &Uuid) -> Result<String, SecurityError> {
-        let entry = self.entries.read()
+        let entry = self
+            .entries
+            .read()
             .get(id)
             .cloned()
             .ok_or(SecurityError::EntryNotFound(id.to_string()))?;
 
-        let plaintext = self.encryption.decrypt(&entry.encrypted_data, entry.label.as_bytes())?;
+        let plaintext = self
+            .encryption
+            .decrypt(&entry.encrypted_data, entry.label.as_bytes())?;
 
         String::from_utf8(plaintext)
             .map_err(|_| SecurityError::DecryptionFailed("Decrypted data is not UTF-8".into()))
@@ -287,22 +305,35 @@ pub struct PolicyEngine {
 
 impl PolicyEngine {
     pub fn new() -> Self {
-        Self { policies: RwLock::new(Vec::new()) }
+        Self {
+            policies: RwLock::new(Vec::new()),
+        }
     }
 
     pub fn add_policy(&self, policy: Policy) {
         self.policies.write().push(policy);
     }
 
-    pub fn evaluate(&self, action: &PolicyAction, resource: &str, user_role: &str) -> Result<PolicyDecision, SecurityError> {
+    pub fn evaluate(
+        &self,
+        action: &PolicyAction,
+        resource: &str,
+        user_role: &str,
+    ) -> Result<PolicyDecision, SecurityError> {
         let policies = self.policies.read();
 
         for policy in policies.iter().filter(|p| p.enabled) {
             for rule in &policy.rules {
-                if rule.action != *action { continue; }
-                if !resource.starts_with(&rule.resource) { continue; }
+                if rule.action != *action {
+                    continue;
+                }
+                if !resource.starts_with(&rule.resource) {
+                    continue;
+                }
 
-                if !rule.allowed_roles.is_empty() && !rule.allowed_roles.contains(&user_role.to_string()) {
+                if !rule.allowed_roles.is_empty()
+                    && !rule.allowed_roles.contains(&user_role.to_string())
+                {
                     continue;
                 }
 
@@ -398,7 +429,11 @@ impl SecurityManager {
         let encryption = Arc::new(EncryptionEngine::new());
         let vault = Arc::new(CredentialVault::new(encryption.clone()));
         let policy = Arc::new(PolicyEngine::default());
-        Self { encryption, vault, policy }
+        Self {
+            encryption,
+            vault,
+            policy,
+        }
     }
 
     pub fn unlock(&self, master_password: &str) -> Result<(), SecurityError> {
@@ -440,7 +475,14 @@ mod tests {
         encryption.initialize(b"vault_test_key").unwrap();
         let vault = CredentialVault::new(encryption);
 
-        let entry = vault.store("Production DB", CredentialKind::Password, "s3cret!", vec!["prod".into(), "db".into()]).unwrap();
+        let entry = vault
+            .store(
+                "Production DB",
+                CredentialKind::Password,
+                "s3cret!",
+                vec!["prod".into(), "db".into()],
+            )
+            .unwrap();
 
         let retrieved = vault.retrieve(&entry.id).unwrap();
         assert_eq!(retrieved, "s3cret!");
@@ -461,11 +503,15 @@ mod tests {
         let engine = PolicyEngine::default();
 
         // Admin allowed to SSH
-        let decision = engine.evaluate(&PolicyAction::SshConnect, "server:prod-web-01", "admin").unwrap();
+        let decision = engine
+            .evaluate(&PolicyAction::SshConnect, "server:prod-web-01", "admin")
+            .unwrap();
         assert!(decision.allowed);
 
         // Viewer denied admin action
-        let decision = engine.evaluate(&PolicyAction::AdminAction, "system:config", "viewer").unwrap();
+        let decision = engine
+            .evaluate(&PolicyAction::AdminAction, "system:config", "viewer")
+            .unwrap();
         assert!(!decision.allowed);
     }
 }

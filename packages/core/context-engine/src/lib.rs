@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{info, debug, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 // ─── Error Types ───────────────────────────────────────────────────────────────
@@ -218,7 +218,8 @@ impl ContextEngine {
     }
 
     pub fn list_servers_by_group(&self, group_name: &str) -> Vec<ServerState> {
-        self.servers.iter()
+        self.servers
+            .iter()
             .filter(|s| s.group.as_deref() == Some(group_name))
             .map(|s| s.clone())
             .collect()
@@ -231,7 +232,9 @@ impl ContextEngine {
     }
 
     pub fn get_command_history(&self, server_id: &Uuid, limit: usize) -> Vec<CommandRecord> {
-        let mut history: Vec<CommandRecord> = self.commands.iter()
+        let mut history: Vec<CommandRecord> = self
+            .commands
+            .iter()
             .filter(|c| c.server_id == *server_id)
             .map(|c| c.clone())
             .collect();
@@ -242,7 +245,11 @@ impl ContextEngine {
 
     // ─── AI Conversations ──────────────────────────────────────────────────
 
-    pub fn create_conversation(&self, server_id: Option<Uuid>, context_type: ConversationType) -> AiConversation {
+    pub fn create_conversation(
+        &self,
+        server_id: Option<Uuid>,
+        context_type: ConversationType,
+    ) -> AiConversation {
         let now = chrono::Utc::now().to_rfc3339();
         let conversation = AiConversation {
             id: Uuid::new_v4(),
@@ -252,11 +259,16 @@ impl ContextEngine {
             updated_at: now,
             context_type,
         };
-        self.conversations.insert(conversation.id, conversation.clone());
+        self.conversations
+            .insert(conversation.id, conversation.clone());
         conversation
     }
 
-    pub fn add_message(&self, conversation_id: &Uuid, message: AiMessage) -> Option<AiConversation> {
+    pub fn add_message(
+        &self,
+        conversation_id: &Uuid,
+        message: AiMessage,
+    ) -> Option<AiConversation> {
         if let Some(mut conv) = self.conversations.get_mut(conversation_id) {
             conv.messages.push(message);
             conv.updated_at = chrono::Utc::now().to_rfc3339();
@@ -270,9 +282,7 @@ impl ContextEngine {
     }
 
     pub fn get_recent_conversations(&self, limit: usize) -> Vec<AiConversation> {
-        let mut convs: Vec<AiConversation> = self.conversations.iter()
-            .map(|c| c.clone())
-            .collect();
+        let mut convs: Vec<AiConversation> = self.conversations.iter().map(|c| c.clone()).collect();
         convs.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         convs.truncate(limit);
         convs
@@ -336,26 +346,32 @@ mod tests {
         let conv = ctx.create_conversation(None, ConversationType::Chat);
         assert_eq!(conv.messages.len(), 0);
 
-        ctx.add_message(&conv.id, AiMessage {
-            role: AiRole::User,
-            content: "Show me running containers".into(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            tool_calls: vec![],
-            metadata: None,
-        });
+        ctx.add_message(
+            &conv.id,
+            AiMessage {
+                role: AiRole::User,
+                content: "Show me running containers".into(),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                tool_calls: vec![],
+                metadata: None,
+            },
+        );
 
-        ctx.add_message(&conv.id, AiMessage {
-            role: AiRole::Assistant,
-            content: "Running `docker ps` on production server...".into(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            tool_calls: vec![AiToolCall {
-                id: "call_1".into(),
-                tool: "docker_list_containers".into(),
-                arguments: serde_json::json!({"all": false}),
-                result: None,
-            }],
-            metadata: None,
-        });
+        ctx.add_message(
+            &conv.id,
+            AiMessage {
+                role: AiRole::Assistant,
+                content: "Running `docker ps` on production server...".into(),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                tool_calls: vec![AiToolCall {
+                    id: "call_1".into(),
+                    tool: "docker_list_containers".into(),
+                    arguments: serde_json::json!({"all": false}),
+                    result: None,
+                }],
+                metadata: None,
+            },
+        );
 
         let updated = ctx.get_conversation(&conv.id).unwrap();
         assert_eq!(updated.messages.len(), 2);

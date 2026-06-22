@@ -25,6 +25,15 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          WEBKIT_PKG=libwebkit2gtk-4.1-dev
+          if ! apt-cache show "$WEBKIT_PKG" >/dev/null 2>&1; then
+            WEBKIT_PKG=libwebkit2gtk-4.0-dev
+          fi
+          sudo apt-get install -y "$WEBKIT_PKG" libappindicator3-dev librsvg2-dev patchelf
+
       - name: Rustfmt check
         run: cargo fmt --all -- --check
 
