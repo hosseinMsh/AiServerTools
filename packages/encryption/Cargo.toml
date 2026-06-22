@@ -1,0 +1,16 @@
+[package]
+name = "encryption"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone encryption module with key derivation, AES-256-GCM, and password hashing"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+aes-gcm.workspace = true
+argon2.workspace = true
+sha2.workspace = true
+rand.workspace = true
+base64.workspace = true

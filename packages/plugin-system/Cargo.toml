@@ -1,0 +1,15 @@
+[package]
+name = "plugin-system"
+version = "0.1.0"
+edition = "2021"
+description = "Sandboxed plugin system with WASM-based isolation and permission control"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+parking_lot.workspace = true
+dashmap.workspace = true

@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = [
+    "packages/core/ssh-engine",
+    "packages/core/docker-engine",
+    "packages/core/sftp-engine",
+    "packages/core/tunnel-engine",
+    "packages/core/security",
+    "packages/core/audit",
+    "packages/core/context-engine",
+    "packages/core/tool-engine",
+    "packages/ai-engine",
+    "packages/plugin-system",
+    "packages/encryption",
+    "apps/cli",
+    "apps/desktop/src-tauri",
+]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+russh = "0.44"
+russh-keys = "0.44"
+aes-gcm = "0.10"
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+sha2 = "0.10"
+rand = "0.8"
+reqwest = { version = "0.12", features = ["json", "socks"] }
+base64 = "0.22"
+hex = "0.4"
+once_cell = "1"
+parking_lot = "0.12"
+dashmap = "6"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }

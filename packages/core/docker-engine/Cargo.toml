@@ -1,0 +1,16 @@
+[package]
+name = "docker-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Docker remote API client for container management over SSH tunnel"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+reqwest.workspace = true
+parking_lot.workspace = true

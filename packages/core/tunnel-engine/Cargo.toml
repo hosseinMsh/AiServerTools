@@ -1,0 +1,15 @@
+[package]
+name = "tunnel-engine"
+version = "0.1.0"
+edition = "2021"
+description = "SSH tunneling engine supporting SOCKS5 proxy, local and remote port forwarding"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+parking_lot.workspace = true
+dashmap.workspace = true
