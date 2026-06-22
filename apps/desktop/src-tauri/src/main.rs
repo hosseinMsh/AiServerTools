@@ -382,9 +382,6 @@ fn main() {
     info!("Starting InfraCore Desktop v{}", env!("CARGO_PKG_VERSION"));
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             // SSH
