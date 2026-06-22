@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn, debug, error};
+use std::path::{Path, PathBuf};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // ─── Error Types ───────────────────────────────────────────────────────────────
@@ -87,7 +87,10 @@ pub struct SftpSession {
 
 impl SftpSession {
     pub fn new(session_id: Uuid) -> Self {
-        Self { session_id, remote_path: "/".to_string() }
+        Self {
+            session_id,
+            remote_path: "/".to_string(),
+        }
     }
 
     pub async fn list_directory(&self, path: &str) -> Result<Vec<FileInfo>, SftpError> {
@@ -184,10 +187,12 @@ impl SafeFileOps {
     /// Creates a backup before overwriting
     pub fn backup_path(original: &Path) -> PathBuf {
         let mut backup = original.to_path_buf();
-        let ext = backup.extension()
+        let ext = backup
+            .extension()
             .map(|e| format!(".{}", e.to_string_lossy()))
             .unwrap_or_default();
-        let stem = backup.file_stem()
+        let stem = backup
+            .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "file".to_string());
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");

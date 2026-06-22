@@ -112,7 +112,9 @@ pub struct ToolRegistry {
 
 impl ToolRegistry {
     pub fn new() -> Self {
-        Self { tools: parking_lot::RwLock::new(std::collections::HashMap::new()) }
+        Self {
+            tools: parking_lot::RwLock::new(std::collections::HashMap::new()),
+        }
     }
 
     pub fn register(&self, tool: Box<dyn Tool>) {
@@ -120,9 +122,13 @@ impl ToolRegistry {
         self.tools.write().insert(name, tool);
     }
 
-    pub fn execute(&self, request: ToolExecutionRequest) -> Result<ToolExecutionResponse, ToolError> {
+    pub fn execute(
+        &self,
+        request: ToolExecutionRequest,
+    ) -> Result<ToolExecutionResponse, ToolError> {
         let tools = self.tools.read();
-        let tool = tools.get(&request.tool)
+        let tool = tools
+            .get(&request.tool)
             .ok_or_else(|| ToolError::ToolNotFound(request.tool.clone()))?;
 
         let start = std::time::Instant::now();
@@ -143,7 +149,9 @@ impl ToolRegistry {
 
     pub fn get_tool_metadata(&self, name: &str) -> Option<(String, String, ToolCategory)> {
         let tools = self.tools.read();
-        tools.get(name).map(|t| (t.name().into(), t.description().into(), t.category()))
+        tools
+            .get(name)
+            .map(|t| (t.name().into(), t.description().into(), t.category()))
     }
 }
 

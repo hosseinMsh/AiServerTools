@@ -3,7 +3,11 @@ use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 #[derive(Parser)]
-#[command(name = "infra", version, about = "InfraCore - Enterprise Infrastructure Control Platform")]
+#[command(
+    name = "infra",
+    version,
+    about = "InfraCore - Enterprise Infrastructure Control Platform"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -86,12 +90,25 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum DockerAction {
-    Ps { all: bool },
-    Logs { container: String, tail: Option<u32> },
-    Start { container: String },
-    Stop { container: String },
-    Restart { container: String },
-    Stats { container: String },
+    Ps {
+        all: bool,
+    },
+    Logs {
+        container: String,
+        tail: Option<u32>,
+    },
+    Start {
+        container: String,
+    },
+    Stop {
+        container: String,
+    },
+    Restart {
+        container: String,
+    },
+    Stats {
+        container: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -103,10 +120,19 @@ enum SftpAction {
 
 #[derive(Subcommand)]
 enum TunnelAction {
-    Socks { port: u16, bind: Option<String> },
-    Local { bind_port: u16, target_host: String, target_port: u16 },
+    Socks {
+        port: u16,
+        bind: Option<String>,
+    },
+    Local {
+        bind_port: u16,
+        target_host: String,
+        target_port: u16,
+    },
     List,
-    Stop { id: String },
+    Stop {
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -120,14 +146,19 @@ enum VaultAction {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env()
-            .add_directive(tracing::Level::INFO.into()))
+        .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
         .init();
 
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Ssh { host, port, user, key, proxy_jump } => {
+        Commands::Ssh {
+            host,
+            port,
+            user,
+            key,
+            proxy_jump,
+        } => {
             let port = port.unwrap_or(22);
             let user = user.as_deref().unwrap_or("root");
             println!("Connecting to {}@{}:{}...", user, host, port);
@@ -212,61 +243,64 @@ async fn main() {
             // TODO: get session from manager by server ID
             println!("Command execution requires an active SSH session");
         }
-        Commands::Docker { action } => {
-            match action {
-                DockerAction::Ps { all } => {
-                    println!("Docker ps (all={})", all);
-                }
-                DockerAction::Logs { container, tail } => {
-                    println!("Logs for {} (tail={:?})", container, tail);
-                }
-                DockerAction::Start { container } => {
-                    println!("Starting container {}", container);
-                }
-                DockerAction::Stop { container } => {
-                    println!("Stopping container {}", container);
-                }
-                DockerAction::Restart { container } => {
-                    println!("Restarting container {}", container);
-                }
-                DockerAction::Stats { container } => {
-                    println!("Stats for {}", container);
-                }
+        Commands::Docker { action } => match action {
+            DockerAction::Ps { all } => {
+                println!("Docker ps (all={})", all);
             }
-        }
-        Commands::Sftp { action } => {
-            match action {
-                SftpAction::Ls { path } => println!("Listing: {}", path),
-                SftpAction::Download { remote, local } => println!("Download {} -> {}", remote, local),
-                SftpAction::Upload { local, remote } => println!("Upload {} -> {}", local, remote),
+            DockerAction::Logs { container, tail } => {
+                println!("Logs for {} (tail={:?})", container, tail);
             }
-        }
-        Commands::Tunnel { action } => {
-            match action {
-                TunnelAction::Socks { port, bind } => {
-                    let bind = bind.as_deref().unwrap_or("127.0.0.1");
-                    println!("Starting SOCKS5 proxy on {}:{}", bind, port);
-                }
-                TunnelAction::Local { bind_port, target_host, target_port } => {
-                    println!("Local forward :{} -> {}:{}", bind_port, target_host, target_port);
-                }
-                TunnelAction::List => println!("Active tunnels:"),
-                TunnelAction::Stop { id } => println!("Stopping tunnel {}", id),
+            DockerAction::Start { container } => {
+                println!("Starting container {}", container);
             }
-        }
+            DockerAction::Stop { container } => {
+                println!("Stopping container {}", container);
+            }
+            DockerAction::Restart { container } => {
+                println!("Restarting container {}", container);
+            }
+            DockerAction::Stats { container } => {
+                println!("Stats for {}", container);
+            }
+        },
+        Commands::Sftp { action } => match action {
+            SftpAction::Ls { path } => println!("Listing: {}", path),
+            SftpAction::Download { remote, local } => println!("Download {} -> {}", remote, local),
+            SftpAction::Upload { local, remote } => println!("Upload {} -> {}", local, remote),
+        },
+        Commands::Tunnel { action } => match action {
+            TunnelAction::Socks { port, bind } => {
+                let bind = bind.as_deref().unwrap_or("127.0.0.1");
+                println!("Starting SOCKS5 proxy on {}:{}", bind, port);
+            }
+            TunnelAction::Local {
+                bind_port,
+                target_host,
+                target_port,
+            } => {
+                println!(
+                    "Local forward :{} -> {}:{}",
+                    bind_port, target_host, target_port
+                );
+            }
+            TunnelAction::List => println!("Active tunnels:"),
+            TunnelAction::Stop { id } => println!("Stopping tunnel {}", id),
+        },
         Commands::ListServers => {
             println!("Registered servers:");
             println!("  (No servers configured)");
         }
-        Commands::Vault { action } => {
-            match action {
-                VaultAction::Store { label, value } => println!("Stored '{}' in vault", label),
-                VaultAction::Get { id } => println!("Retrieved secret {}", id),
-                VaultAction::List => println!("Vault entries:"),
-                VaultAction::Delete { id } => println!("Deleted entry {}", id),
-            }
-        }
-        Commands::Ai { prompt, provider, model } => {
+        Commands::Vault { action } => match action {
+            VaultAction::Store { label, value } => println!("Stored '{}' in vault", label),
+            VaultAction::Get { id } => println!("Retrieved secret {}", id),
+            VaultAction::List => println!("Vault entries:"),
+            VaultAction::Delete { id } => println!("Deleted entry {}", id),
+        },
+        Commands::Ai {
+            prompt,
+            provider,
+            model,
+        } => {
             println!("AI Query: {}", prompt);
             if let Some(p) = provider {
                 println!("Provider: {}", p);

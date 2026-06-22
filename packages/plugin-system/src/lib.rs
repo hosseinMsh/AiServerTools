@@ -2,7 +2,7 @@ use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 // ─── Error Types ───────────────────────────────────────────────────────────────
@@ -130,7 +130,10 @@ impl PluginInstance {
         let mut state = self.state.write();
         state.enabled = true;
         state.last_loaded = Some(chrono::Utc::now().to_rfc3339());
-        info!("Plugin loaded: {} v{}", state.manifest.name, state.manifest.version);
+        info!(
+            "Plugin loaded: {} v{}",
+            state.manifest.name, state.manifest.version
+        );
         Ok(())
     }
 
@@ -172,7 +175,8 @@ impl PluginManager {
         self.check_permission_safety(&manifest.permissions)?;
 
         // Register permissions
-        self.permissions.insert(manifest.name.clone(), manifest.permissions.clone());
+        self.permissions
+            .insert(manifest.name.clone(), manifest.permissions.clone());
 
         self.plugins.insert(id, instance);
         info!("Plugin registered: {} (id={})", manifest.name, id);
@@ -180,19 +184,25 @@ impl PluginManager {
     }
 
     pub fn load_plugin(&self, id: &Uuid) -> Result<(), PluginError> {
-        let plugin = self.plugins.get(id)
+        let plugin = self
+            .plugins
+            .get(id)
             .ok_or(PluginError::PluginNotFound(*id))?;
         plugin.load()
     }
 
     pub fn unload_plugin(&self, id: &Uuid) -> Result<(), PluginError> {
-        let plugin = self.plugins.get(id)
+        let plugin = self
+            .plugins
+            .get(id)
             .ok_or(PluginError::PluginNotFound(*id))?;
         plugin.unload()
     }
 
     pub fn remove_plugin(&self, id: &Uuid) -> Result<(), PluginError> {
-        let (_, plugin) = self.plugins.remove(id)
+        let (_, plugin) = self
+            .plugins
+            .remove(id)
             .ok_or(PluginError::PluginNotFound(*id))?;
         let name = plugin.state.read().manifest.name.clone();
         self.permissions.remove(&name);
@@ -201,13 +211,17 @@ impl PluginManager {
     }
 
     pub fn check_plugin_permission(&self, plugin_name: &str, required: &PluginPermission) -> bool {
-        self.permissions.get(plugin_name)
+        self.permissions
+            .get(plugin_name)
             .map(|perms| perms.contains(required))
             .unwrap_or(false)
     }
 
     pub fn list_plugins(&self) -> Vec<PluginState> {
-        self.plugins.iter().map(|e| e.value().state.read().clone()).collect()
+        self.plugins
+            .iter()
+            .map(|e| e.value().state.read().clone())
+            .collect()
     }
 
     pub fn get_plugin(&self, id: &Uuid) -> Option<Arc<PluginInstance>> {
@@ -274,7 +288,9 @@ mod tests {
 
         let deserialized: PluginManifest = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.name, "Docker Dashboard");
-        assert!(deserialized.permissions.contains(&PluginPermission::DockerRead));
+        assert!(deserialized
+            .permissions
+            .contains(&PluginPermission::DockerRead));
     }
 
     #[test]

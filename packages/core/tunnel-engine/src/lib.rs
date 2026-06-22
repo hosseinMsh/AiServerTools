@@ -1,12 +1,12 @@
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // ─── Error Types ───────────────────────────────────────────────────────────────
@@ -123,51 +123,76 @@ async fn handle_socks5_connection(
 
     // SOCKS5 handshake
     let mut buf = [0u8; 2];
-    inbound.read_exact(&mut buf).await
+    inbound
+        .read_exact(&mut buf)
+        .await
         .map_err(|e| TunnelError::IoError(e.to_string()))?;
 
     let n_methods = buf[1] as usize;
     let mut methods = vec![0u8; n_methods];
-    inbound.read_exact(&mut methods).await
+    inbound
+        .read_exact(&mut methods)
+        .await
         .map_err(|e| TunnelError::IoError(e.to_string()))?;
 
     // Reply: no authentication required (0x00)
-    inbound.write_all(&[0x05, 0x00]).await
+    inbound
+        .write_all(&[0x05, 0x00])
+        .await
         .map_err(|e| TunnelError::IoError(e.to_string()))?;
 
     // Read request
     let mut header = [0u8; 4];
-    inbound.read_exact(&mut header).await
+    inbound
+        .read_exact(&mut header)
+        .await
         .map_err(|e| TunnelError::IoError(e.to_string()))?;
 
     let atyp = header[3];
     let target_addr = match atyp {
-        0x01 => { // IPv4
+        0x01 => {
+            // IPv4
             let mut addr = [0u8; 4];
-            inbound.read_exact(&mut addr).await
+            inbound
+                .read_exact(&mut addr)
+                .await
                 .map_err(|e| TunnelError::IoError(e.to_string()))?;
             SocketAddr::from((addr, 0)).ip().to_string()
         }
-        0x03 => { // Domain name
+        0x03 => {
+            // Domain name
             let mut len = [0u8; 1];
-            inbound.read_exact(&mut len).await
+            inbound
+                .read_exact(&mut len)
+                .await
                 .map_err(|e| TunnelError::IoError(e.to_string()))?;
             let mut domain = vec![0u8; len[0] as usize];
-            inbound.read_exact(&mut domain).await
+            inbound
+                .read_exact(&mut domain)
+                .await
                 .map_err(|e| TunnelError::IoError(e.to_string()))?;
             String::from_utf8_lossy(&domain).to_string()
         }
-        0x04 => { // IPv6
+        0x04 => {
+            // IPv6
             let mut addr = [0u8; 16];
-            inbound.read_exact(&mut addr).await
+            inbound
+                .read_exact(&mut addr)
+                .await
                 .map_err(|e| TunnelError::IoError(e.to_string()))?;
             SocketAddr::from((addr, 0)).ip().to_string()
         }
-        _ => return Err(TunnelError::ConnectionFailed("Unsupported address type".into())),
+        _ => {
+            return Err(TunnelError::ConnectionFailed(
+                "Unsupported address type".into(),
+            ))
+        }
     };
 
     let mut port_buf = [0u8; 2];
-    inbound.read_exact(&mut port_buf).await
+    inbound
+        .read_exact(&mut port_buf)
+        .await
         .map_err(|e| TunnelError::IoError(e.to_string()))?;
     let target_port = u16::from_be_bytes(port_buf);
 
@@ -177,7 +202,9 @@ async fn handle_socks5_connection(
     match TcpStream::connect(format!("{}:{}", target_addr, target_port)).await {
         Ok(mut outbound) => {
             // Reply: success
-            inbound.write_all(&[0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).await
+            inbound
+                .write_all(&[0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+                .await
                 .map_err(|e| TunnelError::IoError(e.to_string()))?;
 
             // Bidirectional copy
@@ -198,9 +225,14 @@ async fn handle_socks5_connection(
             }
         }
         Err(e) => {
-            warn!("SOCKS5 connection to {}:{} failed: {}", target_addr, target_port, e);
+            warn!(
+                "SOCKS5 connection to {}:{} failed: {}",
+                target_addr, target_port, e
+            );
             // Reply: connection refused
-            inbound.write_all(&[0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).await
+            inbound
+                .write_all(&[0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+                .await
                 .map_err(|e| TunnelError::IoError(e.to_string()))?;
         }
     }
@@ -216,12 +248,22 @@ pub struct TunnelManager {
 
 impl TunnelManager {
     pub fn new() -> Self {
-        Self { tunnels: Arc::new(DashMap::new()) }
+        Self {
+            tunnels: Arc::new(DashMap::new()),
+        }
     }
 
-    pub async fn start_tunnel(&self, config: TunnelConfig) -> Result<Arc<TunnelInstance>, TunnelError> {
-        info!("Starting {} tunnel {} on {}:{}",
-            config.kind.as_flag(), config.label, config.bind_addr, config.bind_port);
+    pub async fn start_tunnel(
+        &self,
+        config: TunnelConfig,
+    ) -> Result<Arc<TunnelInstance>, TunnelError> {
+        info!(
+            "Starting {} tunnel {} on {}:{}",
+            config.kind.as_flag(),
+            config.label,
+            config.bind_addr,
+            config.bind_port
+        );
 
         let active = Arc::new(AtomicBool::new(true));
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
@@ -256,17 +298,21 @@ impl TunnelManager {
                 let instance_ref = instance.clone();
 
                 let handle = tokio::spawn(async move {
-                    let listener = match TcpListener::bind(format!("{}:{}", bind_addr, bind_port)).await {
-                        Ok(l) => l,
-                        Err(e) => {
-                            error!("Failed to bind SOCKS5 proxy on {}:{}: {}", bind_addr, bind_port, e);
-                            active_clone.store(false, Ordering::Relaxed);
-                            let mut status = instance_ref.status.write();
-                            status.active = false;
-                            status.error = Some(format!("Bind failed: {}", e));
-                            return;
-                        }
-                    };
+                    let listener =
+                        match TcpListener::bind(format!("{}:{}", bind_addr, bind_port)).await {
+                            Ok(l) => l,
+                            Err(e) => {
+                                error!(
+                                    "Failed to bind SOCKS5 proxy on {}:{}: {}",
+                                    bind_addr, bind_port, e
+                                );
+                                active_clone.store(false, Ordering::Relaxed);
+                                let mut status = instance_ref.status.write();
+                                status.active = false;
+                                status.error = Some(format!("Bind failed: {}", e));
+                                return;
+                            }
+                        };
 
                     info!("SOCKS5 proxy listening on {}:{}", bind_addr, bind_port);
 
@@ -308,19 +354,26 @@ impl TunnelManager {
                 let instance_ref = instance.clone();
 
                 let handle = tokio::spawn(async move {
-                    let listener = match TcpListener::bind(format!("{}:{}", bind_addr, bind_port)).await {
-                        Ok(l) => l,
-                        Err(e) => {
-                            error!("Failed to bind local forward on {}:{}: {}", bind_addr, bind_port, e);
-                            active_clone.store(false, Ordering::Relaxed);
-                            let mut status = instance_ref.status.write();
-                            status.active = false;
-                            status.error = Some(format!("Bind failed: {}", e));
-                            return;
-                        }
-                    };
+                    let listener =
+                        match TcpListener::bind(format!("{}:{}", bind_addr, bind_port)).await {
+                            Ok(l) => l,
+                            Err(e) => {
+                                error!(
+                                    "Failed to bind local forward on {}:{}: {}",
+                                    bind_addr, bind_port, e
+                                );
+                                active_clone.store(false, Ordering::Relaxed);
+                                let mut status = instance_ref.status.write();
+                                status.active = false;
+                                status.error = Some(format!("Bind failed: {}", e));
+                                return;
+                            }
+                        };
 
-                    info!("Local forward {}:{} -> {}:{}", bind_addr, bind_port, target_host, target_port);
+                    info!(
+                        "Local forward {}:{} -> {}:{}",
+                        bind_addr, bind_port, target_host, target_port
+                    );
 
                     loop {
                         tokio::select! {
@@ -364,8 +417,13 @@ impl TunnelManager {
         }
 
         self.tunnels.insert(config.id, instance.clone());
-        info!("Tunnel {} created ({} on {}:{})", config.label, config.kind.as_flag(),
-            config.bind_addr, config.bind_port);
+        info!(
+            "Tunnel {} created ({} on {}:{})",
+            config.label,
+            config.kind.as_flag(),
+            config.bind_addr,
+            config.bind_port
+        );
 
         Ok(instance)
     }

@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use parking_lot::RwLock;
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tokio::sync::Mutex;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // ─── Error Types ───────────────────────────────────────────────────────────────
@@ -138,14 +138,22 @@ impl DockerClient {
             .build()
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
-        Ok(Self { config, http, api_base })
+        Ok(Self {
+            config,
+            http,
+            api_base,
+        })
     }
 
     // ─── Container Operations ──────────────────────────────────────────────
 
     pub async fn list_containers(&self, all: bool) -> Result<Vec<ContainerSummary>, DockerError> {
         let url = format!("{}/containers/json?all={}", self.api_base, all);
-        let resp = self.http.get(&url).send().await
+        let resp = self
+            .http
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
@@ -155,46 +163,74 @@ impl DockerClient {
             });
         }
 
-        let raw: Vec<serde_json::Value> = resp.json().await
+        let raw: Vec<serde_json::Value> = resp
+            .json()
+            .await
             .map_err(|e| DockerError::SerdeError(e.to_string()))?;
 
-        let containers = raw.into_iter().map(|c| ContainerSummary {
-            id: c["Id"].as_str().unwrap_or("").to_string(),
-            name: c["Names"].as_array()
-                .and_then(|n| n.first())
-                .and_then(|n| n.as_str())
-                .unwrap_or("")
-                .trim_start_matches('/')
-                .to_string(),
-            image: c["Image"].as_str().unwrap_or("").to_string(),
-            status: c["Status"].as_str().unwrap_or("").to_string(),
-            state: c["State"].as_str().unwrap_or("").to_string(),
-            created: c["Created"].as_i64().map(|t| chrono::DateTime::from_timestamp(t, 0)
-                .map(|dt| dt.to_rfc3339()).unwrap_or_default()).unwrap_or_default(),
-            ports: c["Ports"].as_array().map(|ports| {
-                ports.iter().map(|p| PortMapping {
-                    private_port: p["PrivatePort"].as_u64().unwrap_or(0) as u16,
-                    public_port: p["PublicPort"].as_u64().map(|v| v as u16),
-                    ip: p["IP"].as_str().map(|s| s.to_string()),
-                    protocol: p["Type"].as_str().unwrap_or("tcp").to_string(),
-                }).collect()
-            }).unwrap_or_default(),
-            mounts: c["Mounts"].as_array().map(|mounts| {
-                mounts.iter().map(|m| MountPoint {
-                    source: m["Source"].as_str().unwrap_or("").to_string(),
-                    destination: m["Destination"].as_str().unwrap_or("").to_string(),
-                    mode: m["Mode"].as_str().unwrap_or("").to_string(),
-                    rw: m["RW"].as_bool().unwrap_or(true),
-                }).collect()
-            }).unwrap_or_default(),
-        }).collect();
+        let containers = raw
+            .into_iter()
+            .map(|c| ContainerSummary {
+                id: c["Id"].as_str().unwrap_or("").to_string(),
+                name: c["Names"]
+                    .as_array()
+                    .and_then(|n| n.first())
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .trim_start_matches('/')
+                    .to_string(),
+                image: c["Image"].as_str().unwrap_or("").to_string(),
+                status: c["Status"].as_str().unwrap_or("").to_string(),
+                state: c["State"].as_str().unwrap_or("").to_string(),
+                created: c["Created"]
+                    .as_i64()
+                    .map(|t| {
+                        chrono::DateTime::from_timestamp(t, 0)
+                            .map(|dt| dt.to_rfc3339())
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default(),
+                ports: c["Ports"]
+                    .as_array()
+                    .map(|ports| {
+                        ports
+                            .iter()
+                            .map(|p| PortMapping {
+                                private_port: p["PrivatePort"].as_u64().unwrap_or(0) as u16,
+                                public_port: p["PublicPort"].as_u64().map(|v| v as u16),
+                                ip: p["IP"].as_str().map(|s| s.to_string()),
+                                protocol: p["Type"].as_str().unwrap_or("tcp").to_string(),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                mounts: c["Mounts"]
+                    .as_array()
+                    .map(|mounts| {
+                        mounts
+                            .iter()
+                            .map(|m| MountPoint {
+                                source: m["Source"].as_str().unwrap_or("").to_string(),
+                                destination: m["Destination"].as_str().unwrap_or("").to_string(),
+                                mode: m["Mode"].as_str().unwrap_or("").to_string(),
+                                rw: m["RW"].as_bool().unwrap_or(true),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            })
+            .collect();
 
         Ok(containers)
     }
 
     pub async fn start_container(&self, container_id: &str) -> Result<(), DockerError> {
         let url = format!("{}/containers/{}/start", self.api_base, container_id);
-        let resp = self.http.post(&url).send().await
+        let resp = self
+            .http
+            .post(&url)
+            .send()
+            .await
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 304 {
@@ -207,10 +243,22 @@ impl DockerClient {
         Ok(())
     }
 
-    pub async fn stop_container(&self, container_id: &str, timeout: Option<u32>) -> Result<(), DockerError> {
-        let url = format!("{}/containers/{}/stop?t={}", self.api_base, container_id,
-            timeout.unwrap_or(10));
-        let resp = self.http.post(&url).send().await
+    pub async fn stop_container(
+        &self,
+        container_id: &str,
+        timeout: Option<u32>,
+    ) -> Result<(), DockerError> {
+        let url = format!(
+            "{}/containers/{}/stop?t={}",
+            self.api_base,
+            container_id,
+            timeout.unwrap_or(10)
+        );
+        let resp = self
+            .http
+            .post(&url)
+            .send()
+            .await
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 304 {
@@ -223,10 +271,22 @@ impl DockerClient {
         Ok(())
     }
 
-    pub async fn restart_container(&self, container_id: &str, timeout: Option<u32>) -> Result<(), DockerError> {
-        let url = format!("{}/containers/{}/restart?t={}", self.api_base, container_id,
-            timeout.unwrap_or(10));
-        let resp = self.http.post(&url).send().await
+    pub async fn restart_container(
+        &self,
+        container_id: &str,
+        timeout: Option<u32>,
+    ) -> Result<(), DockerError> {
+        let url = format!(
+            "{}/containers/{}/restart?t={}",
+            self.api_base,
+            container_id,
+            timeout.unwrap_or(10)
+        );
+        let resp = self
+            .http
+            .post(&url)
+            .send()
+            .await
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
@@ -239,9 +299,20 @@ impl DockerClient {
         Ok(())
     }
 
-    pub async fn remove_container(&self, container_id: &str, force: bool) -> Result<(), DockerError> {
-        let url = format!("{}/containers/{}?force={}", self.api_base, container_id, force);
-        let resp = self.http.delete(&url).send().await
+    pub async fn remove_container(
+        &self,
+        container_id: &str,
+        force: bool,
+    ) -> Result<(), DockerError> {
+        let url = format!(
+            "{}/containers/{}?force={}",
+            self.api_base, container_id, force
+        );
+        let resp = self
+            .http
+            .delete(&url)
+            .send()
+            .await
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 404 {
@@ -254,9 +325,15 @@ impl DockerClient {
         Ok(())
     }
 
-    pub async fn container_logs(&self, container_id: &str, opts: ContainerLogOptions) -> Result<String, DockerError> {
-        let mut url = format!("{}/containers/{}/logs?stdout={}&stderr={}&timestamps={}",
-            self.api_base, container_id, opts.stdout, opts.stderr, opts.timestamps);
+    pub async fn container_logs(
+        &self,
+        container_id: &str,
+        opts: ContainerLogOptions,
+    ) -> Result<String, DockerError> {
+        let mut url = format!(
+            "{}/containers/{}/logs?stdout={}&stderr={}&timestamps={}",
+            self.api_base, container_id, opts.stdout, opts.stderr, opts.timestamps
+        );
 
         if let Some(tail) = opts.tail {
             url.push_str(&format!("&tail={}", tail));
@@ -271,7 +348,11 @@ impl DockerClient {
             url.push_str("&follow=true");
         }
 
-        let resp = self.http.get(&url).send().await
+        let resp = self
+            .http
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
@@ -281,12 +362,21 @@ impl DockerClient {
             });
         }
 
-        resp.text().await.map_err(|e| DockerError::SerdeError(e.to_string()))
+        resp.text()
+            .await
+            .map_err(|e| DockerError::SerdeError(e.to_string()))
     }
 
     pub async fn container_stats(&self, container_id: &str) -> Result<ContainerStats, DockerError> {
-        let url = format!("{}/containers/{}/stats?stream=false", self.api_base, container_id);
-        let resp = self.http.get(&url).send().await
+        let url = format!(
+            "{}/containers/{}/stats?stream=false",
+            self.api_base, container_id
+        );
+        let resp = self
+            .http
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
@@ -296,13 +386,21 @@ impl DockerClient {
             });
         }
 
-        let raw: serde_json::Value = resp.json().await
+        let raw: serde_json::Value = resp
+            .json()
+            .await
             .map_err(|e| DockerError::SerdeError(e.to_string()))?;
 
-        let cpu_delta = raw["cpu_stats"]["cpu_usage"]["total_usage"].as_u64().unwrap_or(0);
+        let cpu_delta = raw["cpu_stats"]["cpu_usage"]["total_usage"]
+            .as_u64()
+            .unwrap_or(0);
         let system_delta = raw["cpu_stats"]["system_cpu_usage"].as_u64().unwrap_or(0);
-        let pre_cpu = raw["precpu_stats"]["cpu_usage"]["total_usage"].as_u64().unwrap_or(0);
-        let pre_system = raw["precpu_stats"]["system_cpu_usage"].as_u64().unwrap_or(0);
+        let pre_cpu = raw["precpu_stats"]["cpu_usage"]["total_usage"]
+            .as_u64()
+            .unwrap_or(0);
+        let pre_system = raw["precpu_stats"]["system_cpu_usage"]
+            .as_u64()
+            .unwrap_or(0);
 
         let cpu_delta = cpu_delta.saturating_sub(pre_cpu);
         let system_delta = system_delta.saturating_sub(pre_system);
@@ -322,11 +420,19 @@ impl DockerClient {
         };
 
         let networks = raw["networks"].as_object();
-        let (net_rx, net_tx) = networks.map(|n| {
-            let total_rx: u64 = n.values().map(|v| v["rx_bytes"].as_u64().unwrap_or(0)).sum();
-            let total_tx: u64 = n.values().map(|v| v["tx_bytes"].as_u64().unwrap_or(0)).sum();
-            (total_rx, total_tx)
-        }).unwrap_or((0, 0));
+        let (net_rx, net_tx) = networks
+            .map(|n| {
+                let total_rx: u64 = n
+                    .values()
+                    .map(|v| v["rx_bytes"].as_u64().unwrap_or(0))
+                    .sum();
+                let total_tx: u64 = n
+                    .values()
+                    .map(|v| v["tx_bytes"].as_u64().unwrap_or(0))
+                    .sum();
+                (total_rx, total_tx)
+            })
+            .unwrap_or((0, 0));
 
         Ok(ContainerStats {
             cpu_percent,
@@ -336,13 +442,21 @@ impl DockerClient {
             network_rx: net_rx,
             network_tx: net_tx,
             block_read: raw["blkio_stats"]["io_service_bytes_recursive"]
-                .as_array().and_then(|a| a.iter()
-                    .find(|v| v["op"].as_str() == Some("read"))
-                    .and_then(|v| v["value"].as_u64())).unwrap_or(0),
+                .as_array()
+                .and_then(|a| {
+                    a.iter()
+                        .find(|v| v["op"].as_str() == Some("read"))
+                        .and_then(|v| v["value"].as_u64())
+                })
+                .unwrap_or(0),
             block_write: raw["blkio_stats"]["io_service_bytes_recursive"]
-                .as_array().and_then(|a| a.iter()
-                    .find(|v| v["op"].as_str() == Some("write"))
-                    .and_then(|v| v["value"].as_u64())).unwrap_or(0),
+                .as_array()
+                .and_then(|a| {
+                    a.iter()
+                        .find(|v| v["op"].as_str() == Some("write"))
+                        .and_then(|v| v["value"].as_u64())
+                })
+                .unwrap_or(0),
             pids: raw["pids_stats"]["current"].as_u64().unwrap_or(0) as u32,
         })
     }
@@ -351,7 +465,11 @@ impl DockerClient {
 
     pub async fn list_images(&self) -> Result<Vec<ImageSummary>, DockerError> {
         let url = format!("{}/images/json", self.api_base);
-        let resp = self.http.get(&url).send().await
+        let resp = self
+            .http
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
@@ -361,19 +479,35 @@ impl DockerClient {
             });
         }
 
-        let raw: Vec<serde_json::Value> = resp.json().await
+        let raw: Vec<serde_json::Value> = resp
+            .json()
+            .await
             .map_err(|e| DockerError::SerdeError(e.to_string()))?;
 
-        let images = raw.into_iter().map(|i| ImageSummary {
-            id: i["Id"].as_str().unwrap_or("").to_string(),
-            repo_tags: i["RepoTags"].as_array()
-                .map(|t| t.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-                .unwrap_or_default(),
-            created: i["Created"].as_i64().map(|t| chrono::DateTime::from_timestamp(t, 0)
-                .map(|dt| dt.to_rfc3339()).unwrap_or_default()).unwrap_or_default(),
-            size: i["Size"].as_u64().unwrap_or(0),
-            virtual_size: i["VirtualSize"].as_u64().unwrap_or(0),
-        }).collect();
+        let images = raw
+            .into_iter()
+            .map(|i| ImageSummary {
+                id: i["Id"].as_str().unwrap_or("").to_string(),
+                repo_tags: i["RepoTags"]
+                    .as_array()
+                    .map(|t| {
+                        t.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                created: i["Created"]
+                    .as_i64()
+                    .map(|t| {
+                        chrono::DateTime::from_timestamp(t, 0)
+                            .map(|dt| dt.to_rfc3339())
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default(),
+                size: i["Size"].as_u64().unwrap_or(0),
+                virtual_size: i["VirtualSize"].as_u64().unwrap_or(0),
+            })
+            .collect();
 
         Ok(images)
     }
@@ -382,7 +516,11 @@ impl DockerClient {
 
     pub async fn system_info(&self) -> Result<serde_json::Value, DockerError> {
         let url = format!("{}/info", self.api_base);
-        let resp = self.http.get(&url).send().await
+        let resp = self
+            .http
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| DockerError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
@@ -392,7 +530,9 @@ impl DockerClient {
             });
         }
 
-        resp.json().await.map_err(|e| DockerError::SerdeError(e.to_string()))
+        resp.json()
+            .await
+            .map_err(|e| DockerError::SerdeError(e.to_string()))
     }
 }
 
@@ -404,13 +544,18 @@ pub struct DockerManager {
 
 impl DockerManager {
     pub fn new() -> Self {
-        Self { clients: parking_lot::RwLock::new(HashMap::new()) }
+        Self {
+            clients: parking_lot::RwLock::new(HashMap::new()),
+        }
     }
 
     pub fn add_connection(&self, config: DockerConnectionConfig) -> Result<Uuid, DockerError> {
         let client = DockerClient::new(config.clone())?;
         self.clients.write().insert(config.id, client);
-        info!("Docker connection added: {} (id={})", config.label, config.id);
+        info!(
+            "Docker connection added: {} (id={})",
+            config.label, config.id
+        );
         Ok(config.id)
     }
 

@@ -1,7 +1,7 @@
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 // ─── Error Types ───────────────────────────────────────────────────────────────
@@ -137,7 +137,12 @@ impl AuditLogger {
         );
     }
 
-    pub fn start_recording(&self, session_id: Uuid, server_label: String, user: String) -> SessionRecording {
+    pub fn start_recording(
+        &self,
+        session_id: Uuid,
+        server_label: String,
+        user: String,
+    ) -> SessionRecording {
         let recording = SessionRecording {
             id: Uuid::new_v4(),
             session_id,
@@ -149,14 +154,22 @@ impl AuditLogger {
             total_chunks: 0,
         };
 
-        self.recordings.write().insert(session_id, recording.clone());
+        self.recordings
+            .write()
+            .insert(session_id, recording.clone());
         info!("Session recording started: {}", session_id);
         recording
     }
 
-    pub fn record_chunk(&self, session_id: &Uuid, kind: ChunkKind, data: String) -> Result<(), AuditError> {
+    pub fn record_chunk(
+        &self,
+        session_id: &Uuid,
+        kind: ChunkKind,
+        data: String,
+    ) -> Result<(), AuditError> {
         let mut recordings = self.recordings.write();
-        let recording = recordings.get_mut(session_id)
+        let recording = recordings
+            .get_mut(session_id)
             .ok_or(AuditError::SessionNotFound(*session_id))?;
 
         let chunk = RecordingChunk {
@@ -173,7 +186,8 @@ impl AuditLogger {
 
     pub fn stop_recording(&self, session_id: &Uuid) -> Result<SessionRecording, AuditError> {
         let mut recordings = self.recordings.write();
-        let recording = recordings.get_mut(session_id)
+        let recording = recordings
+            .get_mut(session_id)
             .ok_or(AuditError::SessionNotFound(*session_id))?;
         recording.ended_at = Some(chrono::Utc::now().to_rfc3339());
         Ok(recording.clone())
@@ -190,27 +204,43 @@ impl AuditLogger {
 
     pub fn query_events(&self, filter: AuditQuery) -> Vec<AuditEvent> {
         let events = self.events.read();
-        events.iter().filter(|e| {
-            if let Some(event_type) = &filter.event_type {
-                if &e.event_type != event_type { return false; }
-            }
-            if let Some(user) = &filter.user_id {
-                if e.user_id.as_ref().map_or(true, |u| u != user) { return false; }
-            }
-            if let Some(action) = &filter.action {
-                if !e.action.contains(action) { return false; }
-            }
-            if let Some(resource) = &filter.resource {
-                if !e.resource.contains(resource) { return false; }
-            }
-            if let Some(from) = &filter.from {
-                if e.timestamp < *from { return false; }
-            }
-            if let Some(to) = &filter.to {
-                if e.timestamp > *to { return false; }
-            }
-            true
-        }).cloned().collect()
+        events
+            .iter()
+            .filter(|e| {
+                if let Some(event_type) = &filter.event_type {
+                    if &e.event_type != event_type {
+                        return false;
+                    }
+                }
+                if let Some(user) = &filter.user_id {
+                    if e.user_id.as_ref().map_or(true, |u| u != user) {
+                        return false;
+                    }
+                }
+                if let Some(action) = &filter.action {
+                    if !e.action.contains(action) {
+                        return false;
+                    }
+                }
+                if let Some(resource) = &filter.resource {
+                    if !e.resource.contains(resource) {
+                        return false;
+                    }
+                }
+                if let Some(from) = &filter.from {
+                    if e.timestamp < *from {
+                        return false;
+                    }
+                }
+                if let Some(to) = &filter.to {
+                    if e.timestamp > *to {
+                        return false;
+                    }
+                }
+                true
+            })
+            .cloned()
+            .collect()
     }
 }
 
@@ -304,8 +334,12 @@ mod tests {
         let recording = logger.start_recording(session_id, "prod-web-01".into(), "admin".into());
         assert!(recording.ended_at.is_none());
 
-        logger.record_chunk(&session_id, ChunkKind::Stdin, "ls -la\n".into()).unwrap();
-        logger.record_chunk(&session_id, ChunkKind::Stdout, "total 24\n".into()).unwrap();
+        logger
+            .record_chunk(&session_id, ChunkKind::Stdin, "ls -la\n".into())
+            .unwrap();
+        logger
+            .record_chunk(&session_id, ChunkKind::Stdout, "total 24\n".into())
+            .unwrap();
 
         let stopped = logger.stop_recording(&session_id).unwrap();
         assert_eq!(stopped.total_chunks, 2);
